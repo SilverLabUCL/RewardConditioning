@@ -1,12 +1,13 @@
 %% HG 2021
 
-function RewardConditioning()
+function RewardConditioning_Sound()
     
     % SETUP
     % You will need:
     % - A Bpod.
     % > Port#1: Lickport, DI/O
-    % > Port#2: Pole (LED channel)
+    % Psych Toolbox (For playing Sound)
+    % Speakers
 
     global BpodSystem S;
 
@@ -16,7 +17,7 @@ function RewardConditioning()
     if isempty(fieldnames(S))  % If settings file was an empty struct, populate struct with default settings
         S.GUI.WaterValveTime = 0.05;        % in sec
         S.GUI.PreSamplePeriod = 0.5;        % in sec
-        S.GUI.SamplePeriod = 0.05;          % in sec
+        S.GUI.SamplePeriod = 0.10;          % in sec
         
         S.GUI.Prob_Cue1  = 1;               % probability of cue 1
         S.GUI.Delay_Cue2 = 0.2;             % in sec
@@ -32,18 +33,14 @@ function RewardConditioning()
                                 'Prob_Cue1', 'Delay_Cue1', 'Delay_Cue2', 'RewardProb_Cue1', 'RewardProb_Cue2',... % stim dep params
                                 'AnswerPeriod', 'ConsumptionPeriod', 'StopLickingPeriod', 'TimeOut'};             % task params
 
-        S.GUI.Position1 = 2e4;        
-        S.GUI.Position2 = 7e4;        
-        S.GUI.MotorMoveTime = 2;
-        S.GUI.APMotorPosition = 1.5;
-        S.GUI.LateralPolePosition = 1e5;
-        S.GUIPanels.PolePositions = {'Position1', 'Position2', 'MotorMoveTime', 'APMotorPosition', 'LateralPolePosition'};
+        S.GUI.Freq_Cue1 = 500;        
+        S.GUI.Freq_Cue2 = 5000;        
+        S.GUIPanels.Stimuli = {'Freq_Cue1', 'Freq_Cue2'};
         
         S.GUIMeta.ProtocolType.Style = 'popupmenu';     % protocol type selection
         S.GUIMeta.ProtocolType.String = {'Water_Valve_Calibration', 'Licking', ... case 1,2
-                                         'Pole_Delay_Reward',   'Pole_Trace_Delay_Reward', ... case 3,4
-                                         'Pole_Delay_Response', 'Pole_Trace_Delay_Response',  ... case 5,6
-                                         'Pole_Nolick_Delay_Reward', 'Pole_Nolick_Delay_Response' }; % case 7,8
+                                         'Stim_Delay_Reward',  'Stim_Delay_Response'  ... case 3,4
+                                         'Stim_Nolick_Delay_Reward', 'Stim_Nolick_Delay_Response' }; % case 5,6
         S.GUI.ProtocolType = 3; % default =  delay reward
         S.GUIPanels.Protocol= {'ProtocolType'};
     end
@@ -55,25 +52,18 @@ function RewardConditioning()
     p = cellfun(@(x) strcmp(x,'ProtocolType'),BpodSystem.GUIData.ParameterGUI.ParamNames);
     set(BpodSystem.GUIHandles.ParameterGUI.Params(p),'callback',{@manualChangeProtocol, S})
 
-    % Initiate motor
-    initiateZaberMotor;    
+    %% Initiate sounds
+    SF = 192000; % Analog module sampling rate
+    Cue1 = GenerateSineWave(SF, S.GUI.Freq_Cue1, S.GUI.SamplePeriod)*.9; % Sampling freq (hz), Sine frequency (hz), duration (s)
+    Cue2 = GenerateSineWave(SF, S.GUI.Freq_Cue2, S.GUI.SamplePeriod)*.9; % Sampling freq (hz), Sine frequency (hz), duration (s)
+    PunishSound = (rand(1,SF*.5)*2) - 1;
+    
+    PsychToolboxSoundServer('init')
+    PsychToolboxSoundServer('Load', 1, Cue1);
+    PsychToolboxSoundServer('Load', 2, Cue2);
+    PsychToolboxSoundServer('Load', 3, PunishSound)
 
-    % Setup manual motor inputs
-    p = cellfun(@(x) strcmp(x,'APMotorPosition'),BpodSystem.GUIData.ParameterGUI.ParamNames);
-    set(BpodSystem.GUIHandles.ParameterGUI.Params(p),'callback',{@manualMoveZaberMotor,'1'})
-
-    p = cellfun(@(x) strcmp(x,'LateralPolePosition'),BpodSystem.GUIData.ParameterGUI.ParamNames);
-    set(BpodSystem.GUIHandles.ParameterGUI.Params(p),'callback',{@manualMoveZaberMotor,'2'})
-
-    % Move motors to current values from config file
-    p = cellfun(@(x) strcmp(x,'APMotorPosition'),BpodSystem.GUIData.ParameterGUI.ParamNames);
-    anterior_pole_position = get(BpodSystem.GUIHandles.ParameterGUI.Params(p),'String');
-    move_absolute(motors,str2double(anterior_pole_position),1);
-
-    p = cellfun(@(x) strcmp(x,'LateralPolePosition'),BpodSystem.GUIData.ParameterGUI.ParamNames);
-    lateral_pole_position = get(BpodSystem.GUIHandles.ParameterGUI.Params(p),'String');
-    move_absolute(motors,str2double(lateral_pole_position),2);
-
+    BpodSystem.SoftCodeHandlerFunction = 'SoftCodeHandler_PlaySound';
 
     %% Define trials
     MaxTrials = 9999;
@@ -120,10 +110,10 @@ function RewardConditioning()
 
     % Define outputs
     io.WaterOutput  = {'ValveState',1};      % Valve 1 open 
-    io.PoleOutput = {'PWM2',255};            % Behavioural port 2, LED pin
     io.AcqTrig = {'BNC1', 1};
     io.Bitcode = {'BNC2', 1};
     io.CameraTrig = {'WireState', 1};
+    io.Punish = {'SoftCode', 3};
    
 
     %% Main trial loop
@@ -136,13 +126,12 @@ function RewardConditioning()
         xx = rand();
         if xx < S.GUI.Prob_Cue1
             TrialTypes(currentTrial) = 1; rewardProb= S.GUI.RewardProb_Cue1; delay= S.GUI.Delay_Cue1; % stim 1
+            stimOut = {'SoftCode', 1};
         else                       
             TrialTypes(currentTrial) = 2; rewardProb= S.GUI.RewardProb_Cue2; delay= S.GUI.Delay_Cue2; % stim 2
+            stimOut = {'SoftCode', 2};
         end
 
-        % move motor (ITI/Baseline)
-        moveZaberMotors(TrialTypes(currentTrial)); 
-        
         PerfOutcomePlot(BpodSystem.GUIHandles.PerfOutcomePlot,currentTrial,'next_trial',TrialTypes(currentTrial), BpodSystem.GUIHandles.DisplayNTrials);
 
         sma = NewStateMatrix(); % Assemble state matrix
@@ -194,10 +183,12 @@ function RewardConditioning()
         AnswerTup = 'NoResponse';
         DelayTrig = []; % nothing happens during delay licking
         lickDelay = 0.025; % punish for 3 licks in 50 ms
+        EarlyLickAction = 'Punish';
         
         % rewarded?
         yy = rand(); if yy<rewardProb, doReward=1; else, doReward=0; end
         
+        % conditioning task with probabilistic reward
         if doReward 
             DelayTup = 'Reward'; LickAction = 'Reward';
         else
@@ -208,60 +199,35 @@ function RewardConditioning()
             case 2          % Licking
             %---------------------------------------------------------
             % Each lick is rewarded with reward
-                SampleState = 'WaitForLick'; PolePos = [];
-                LickAction = 'Reward';
-         
+                SampleState = 'WaitForLick';
+                LickAction = 'Reward';        
                 
-            case 3          % 'Pole_Delay_Reward'
+            case 3          % 'Stim_Delay_Reward'
             %---------------------------------------------------------                
                 % Stim-Pole comes in, Reward is delivered after Delay
                 % No punishment and no reqt for licking
                 % Pole stays in throughout
-                PolePos = io.PoleOutput;
 
-            case 4          % 'Pole_Trace_Delay_Reward'
-            %---------------------------------------------------------                
-                % Stim-Pole comes in, stays only for sample period
-                % Reward is delivered after Delay
-                % No punishment and no reqt for licking                
-                PolePos = [];
-
-            case 5          % 'Pole_Delay_Response'
+            case 4          % 'Stim_Delay_Response'
             %---------------------------------------------------------     
                 % operant conditioning
                 % reward is delivered after delay only if there is licking
                 % in answer period
                 DelayTup = 'AnswerPeriod'; % need reward for lick
-                PolePos = io.PoleOutput;
-                
-                
-            case 6          % 'Pole_Trace_Delay_Response'
-            %---------------------------------------------------------     
-                % operant conditioning
-                % reward is delivered after delay only if there is licking
-                % in answer period
-                DelayTup = 'AnswerPeriod'; % need reward for lick
-                PolePos = [];
-
-                
-            case 7          % Pole_Nolick_delay_Reward',            
+                                
+            case 5          % Stim_Nolick_delay_Reward'            
             %---------------------------------------------------------    
             % prevent anticipatory licking (< 3 licks in 50 ms) ->
             % restarts delay for fewer licks, else no reward
-            PolePos = [];
             SampleTup = 'Delay_nolick';
             DelayTrig = {'GlobalTimerTrig', 1}; % start delay timer
-            
-
-        
-        case 8     % Pole_Nolick_delay_Response
+                    
+            case 6     % Stim_Nolick_delay_Response
             %---------------------------------------------------------    
             % timed response (delay operant conditioning)
-            PolePos = [];
             SampleTup = 'Delay_nolick';
             DelayTrig = {'GlobalTimerTrig', 1}; % start delay timer
             DelayTup = 'AnswerPeriod'; % need reward for lick
-
                 
         end
         
@@ -281,10 +247,10 @@ function RewardConditioning()
         
         sma = AddBitcode(sma, currentTrial, io.Bitcode, [io.AcqTrig io.CameraTrig], 'SamplePeriod');
 
-        sma = AddState(sma, 'Name', 'SamplePeriod', ...                         % pole in
+        sma = AddState(sma, 'Name', 'SamplePeriod', ...                         % play sound
             'Timer', S.GUI.SamplePeriod, ...
             'StateChangeConditions', {'Tup',SampleTup}, ...
-            'OutputActions', [io.PoleOutput io.AcqTrig io.CameraTrig]);   
+            'OutputActions', [stimOut io.AcqTrig io.CameraTrig]);   
 
 
         % delay states
@@ -292,64 +258,68 @@ function RewardConditioning()
         sma = AddState(sma, 'Name', 'Delay', ...                                % just wait (no punish for licks)
             'Timer', delay, ...
             'StateChangeConditions', {'Tup', DelayTup}, ...
-            'OutputActions', [PolePos io.AcqTrig io.CameraTrig]);                   
+            'OutputActions', [io.AcqTrig io.CameraTrig]);                   
 
         % enforce no licking (no 3 licks within 50 ms; isolated licks ok)
         sma = AddState(sma, 'Name', 'Delay_nolick', ...                         
             'Timer', delay, ...
             'StateChangeConditions', {'Tup', DelayTup, 'Port1In', 'Delay_nolick2'}, ... % move if lick
-            'OutputActions', [DelayTrig PolePos io.AcqTrig io.CameraTrig]);     % start delay timer and wait...
+            'OutputActions', [DelayTrig io.AcqTrig io.CameraTrig]);     % start delay timer and wait...
 
         sma = AddState(sma, 'Name', 'Delay_nolick1', ...                         % wait ...
             'Timer', delay, ...
             'StateChangeConditions', {'Tup', DelayTup, 'GlobalTimer1_End', DelayTup, 'Port1In', 'Delay_nolick2'}, ... % move if lick
-            'OutputActions', [PolePos io.AcqTrig io.CameraTrig]);                   
+            'OutputActions', [io.AcqTrig io.CameraTrig]);                   
         
         
         sma = AddState(sma, 'Name', 'Delay_nolick2', ...                         % wait for 3rd lick
             'Timer', lickDelay, ...
             'StateChangeConditions', {'Tup', 'Delay_nolick1', 'GlobalTimer1_End', DelayTup, 'Port1In', 'Delay_nolick3'}, ... % move if lick
-            'OutputActions', [PolePos io.AcqTrig io.CameraTrig]);                   
-        
+            'OutputActions', [io.AcqTrig io.CameraTrig]);                           
         
         
         sma = AddState(sma, 'Name', 'Delay_nolick3', ...                         % wait for 3rd lick
             'Timer', lickDelay, ...
-            'StateChangeConditions', {'Tup', 'Delay_nolick1', 'GlobalTimer1_End', DelayTup, 'Port1In', 'StopLicking'}, ... % punish if licking
-            'OutputActions', [PolePos io.AcqTrig io.CameraTrig]);                   
+            'StateChangeConditions', {'Tup', 'Delay_nolick1', 'GlobalTimer1_End', DelayTup, 'Port1In', EarlyLickAction}, ... % punish if licking
+            'OutputActions', [io.AcqTrig io.CameraTrig]);                   
         
+        sma = AddState(sma, 'Name', 'Punish', ...                         % punish sound
+            'Timer', S.GUI.SamplePeriod, ...
+            'StateChangeConditions', {'Tup', 'StopLicking'}, ... %
+            'OutputActions', [io.Punish io.AcqTrig io.CameraTrig]);                   
+
         
         % response and reward states
         % -----------------------------------------------------------------
         sma = AddState(sma, 'Name', 'AnswerPeriod', ...                         % pole still in and wait for response
             'Timer', S.GUI.AnswerPeriod, ...
             'StateChangeConditions', {'Port1In', LickAction, 'Tup', AnswerTup}, ...
-            'OutputActions', [PolePos io.AcqTrig io.CameraTrig]);
+            'OutputActions', [io.AcqTrig io.CameraTrig]);
 
         sma = AddState(sma, 'Name', 'Reward', ...                               % turn on water
             'Timer', S.GUI.WaterValveTime, ...
             'StateChangeConditions', {'Tup', 'RewardConsumption'}, ...
-            'OutputActions', [PolePos io.WaterOutput io.AcqTrig io.CameraTrig]);
+            'OutputActions', [io.WaterOutput io.AcqTrig io.CameraTrig]);
 
         sma = AddState(sma, 'Name', 'RewardConsumption', ...                    % reward consumption
             'Timer', S.GUI.ConsumptionPeriod, ...
             'StateChangeConditions', {'Tup', 'StopLicking'}, ...
-            'OutputActions', [PolePos io.AcqTrig io.CameraTrig]);
+            'OutputActions', [io.AcqTrig io.CameraTrig]);
 
         sma = AddState(sma, 'Name', 'NoResponse', ...                           % no response
             'Timer', 0.002, ...
             'StateChangeConditions', {'Tup', 'StopLicking'}, ...
-            'OutputActions', [PolePos io.AcqTrig io.CameraTrig]);
+            'OutputActions', [io.AcqTrig io.CameraTrig]);
 
         sma = AddState(sma, 'Name', 'StopLicking', ...                          % stop licking before advancing to next trial
             'Timer', S.GUI.StopLickingPeriod, ...
             'StateChangeConditions', {'Port1In', 'StopLickingReturn', 'Tup', 'TrialEnd'}, ...
-            'OutputActions', [PolePos io.AcqTrig io.CameraTrig]);
+            'OutputActions', [io.AcqTrig io.CameraTrig]);
 
         sma = AddState(sma, 'Name', 'StopLickingReturn', ...                    % return to stop licking
             'Timer', 0.01, ...
             'StateChangeConditions', {'Tup', 'StopLicking'}, ...
-            'OutputActions',[PolePos io.AcqTrig io.CameraTrig]);
+            'OutputActions',[io.AcqTrig io.CameraTrig]);
 
         sma = AddState(sma, 'Name', 'TrialEnd', ...                             % trial end
             'Timer', 0.05, ...
@@ -414,7 +384,7 @@ function UpdatePerfOutcomePlot(TrialTypes, Data)
         end
         
         % operant (no lick)
-        if Data.TrialSettings(x).GUI.ProtocolType==5 || Data.TrialSettings(x).GUI.ProtocolType==6  || Data.TrialSettings(x).GUI.ProtocolType==8
+        if Data.TrialSettings(x).GUI.ProtocolType==4 || Data.TrialSettings(x).GUI.ProtocolType==6
             % no response
             if ~isnan(Data.RawEvents.Trial{x}.States.NoResponse(1))
                 Outcomes(x) = 2;    % no lick, no reward
@@ -423,7 +393,7 @@ function UpdatePerfOutcomePlot(TrialTypes, Data)
         end
         
         % lick during delay
-        if Data.TrialSettings(x).GUI.ProtocolType==7 || Data.TrialSettings(x).GUI.ProtocolType==8
+        if Data.TrialSettings(x).GUI.ProtocolType==5 || Data.TrialSettings(x).GUI.ProtocolType==6
             if isnan(Data.RawEvents.Trial{x}.States.NoResponse(1)) && isnan(Data.RawEvents.Trial{x}.States.Reward(1))
                 Outcomes(x) = 3;    % early licks
                 BpodSystem.Data.TrialOutcomes(x) = 3;         
