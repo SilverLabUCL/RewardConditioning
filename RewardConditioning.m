@@ -14,39 +14,38 @@ function RewardConditioning()
     S = BpodSystem.ProtocolSettings; % Load settings chosen in launch manager into current workspace as a struct called S
     
     if isempty(fieldnames(S))  % If settings file was an empty struct, populate struct with default settings
-
         S.GUI.WaterValveTime = 0.05;        % in sec
         S.GUI.PreSamplePeriod = 0.5;        % in sec
         S.GUI.SamplePeriod = 0.05;          % in sec
-        S.GUI.Delay = 0.2;                  % in sec
-        S.GUI.AnswerPeriod = 1.5;           % in sec
+        
+        S.GUI.Prob_Cue1  = 1;               % probability of cue 1
+        S.GUI.Delay_Cue2 = 0.2;             % in sec
+        S.GUI.Delay_Cue1 = 0.2;             % in sec
+        S.GUI.RewardProb_Cue1 = 0.8;        % probability of reward for cue 1
+        S.GUI.RewardProb_Cue2 = 0.2;        % probability of reward for cue 2
+        
+        S.GUI.AnswerPeriod = 1.5;           % in sec        
         S.GUI.ConsumptionPeriod = 1.5;      % in sec
         S.GUI.StopLickingPeriod = 0.5;      % in sec
         S.GUI.TimeOut = 4;                  % in sec
-        S.GUIPanels.Behaviour= {'WaterValveTime', 'PreSamplePeriod', 'SamplePeriod', 'Delay', 'AnswerPeriod',...
-            'ConsumptionPeriod', 'StopLickingPeriod', 'TimeOut'};
+        S.GUIPanels.Behaviour= {'WaterValveTime', 'PreSamplePeriod', 'SamplePeriod', ...                          % common params
+                                'Prob_Cue1', 'Delay_Cue1', 'Delay_Cue2', 'RewardProb_Cue1', 'RewardProb_Cue2',... % stim dep params
+                                'AnswerPeriod', 'ConsumptionPeriod', 'StopLickingPeriod', 'TimeOut'};             % task params
 
-
-        %S.GUI.NoGoPosition = 7e4;
-        S.GUI.Position = 2e4;        
+        S.GUI.Position1 = 2e4;        
+        S.GUI.Position2 = 7e4;        
         S.GUI.MotorMoveTime = 2;
         S.GUI.APMotorPosition = 1.5;
         S.GUI.LateralPolePosition = 1e5;
+        S.GUIPanels.PolePositions = {'Position1', 'Position2', 'MotorMoveTime', 'APMotorPosition', 'LateralPolePosition'};
         
-
-        S.GUIPanels.PolePositions = {'Position', 'MotorMoveTime', 'APMotorPosition', 'LateralPolePosition'};
-
-
         S.GUIMeta.ProtocolType.Style = 'popupmenu';     % protocol type selection
-        
         S.GUIMeta.ProtocolType.String = {'Water_Valve_Calibration', 'Licking', ... case 1,2
                                          'Pole_Delay_Reward',   'Pole_Trace_Delay_Reward', ... case 3,4
                                          'Pole_Delay_Response', 'Pole_Trace_Delay_Response',  ... case 5,6
                                          'Pole_Nolick_Delay_Reward', 'Pole_Nolick_Delay_Reward' }; % case 7,8
-        S.GUI.ProtocolType = 3;
-
+        S.GUI.ProtocolType = 3; % default =  delay reward
         S.GUIPanels.Protocol= {'ProtocolType'};
-
     end
 
     % Initialize parameter GUI plugin
@@ -66,7 +65,6 @@ function RewardConditioning()
     p = cellfun(@(x) strcmp(x,'LateralPolePosition'),BpodSystem.GUIData.ParameterGUI.ParamNames);
     set(BpodSystem.GUIHandles.ParameterGUI.Params(p),'callback',{@manualMoveZaberMotor,'2'})
 
-
     % Move motors to current values from config file
     p = cellfun(@(x) strcmp(x,'APMotorPosition'),BpodSystem.GUIData.ParameterGUI.ParamNames);
     anterior_pole_position = get(BpodSystem.GUIHandles.ParameterGUI.Params(p),'String');
@@ -82,7 +80,6 @@ function RewardConditioning()
     TrialTypes = [];
     BpodSystem.Data.TrialTypes = []; % The trial type of each trial completed will be added here.
     BpodSystem.Data.TrialOutcomes = []; % The trial outcomes
-
 
     %% Initialise plots
     BpodSystem.ProtocolFigures.PerfOutcomePlotFig = figure('Position', [150 800 1600 200], ...
@@ -121,9 +118,8 @@ function RewardConditioning()
     BpodSystem.Status.Pause = 1;
     HandlePauseCondition;
 
-
     % Define outputs
-    io.WaterOutput  = {'ValveState',2^0};    % Valve 1 open 
+    io.WaterOutput  = {'ValveState',1};      % Valve 1 open 
     io.PoleOutput = {'PWM2',255};            % Behavioural port 2, LED pin
     io.AcqTrig = {'BNC1', 1};
     io.Bitcode = {'BNC2', 1};
@@ -131,29 +127,33 @@ function RewardConditioning()
    
 
     %% Main trial loop
-    
-    % Move motor into position
-    moveZaberMotors(1); 
-
+        
     for currentTrial = 1 : MaxTrials
         S = BpodParameterGUI('sync', S); % Sync parameters with BpodParameterGUI plugin
-
         disp(['Starting trial ',num2str(currentTrial)])
 
-        TrialTypes(currentTrial) = 1; % only one kind of trial
+        % which stim
+        xx = rand();
+        if xx < S.GUI.Prob_Cue1
+            TrialTypes(currentTrial) = 1; rewardProb= S.GUI.RewardProb_Cue1; delay= S.GUI.Delay_Cue1; % stim 1
+        else                       
+            TrialTypes(currentTrial) = 2; rewardProb= S.GUI.RewardProb_Cue2; delay= S.GUI.Delay_Cue2; % stim 2
+        end
+
+        % move motor (ITI/Baseline)
+        moveZaberMotors(TrialTypes(currentTrial)); 
+        
         PerfOutcomePlot(BpodSystem.GUIHandles.PerfOutcomePlot,currentTrial,'next_trial',TrialTypes(currentTrial), BpodSystem.GUIHandles.DisplayNTrials);
 
         sma = NewStateMatrix(); % Assemble state matrix
+        BpodSystem.Data.TrialSettings(currentTrial) = S; % Adds the settings used for the current trial to the Data struct (to be saved after the trial ends)
+        BpodSystem.Data.TrialTypes(currentTrial) = TrialTypes(currentTrial); % Adds the trial type of the current trial to data
 
         % Build state matrix depending on the protocol type
-        switch S.GUI.ProtocolType
-%%            
-            case 1          % Water_Valve_Calibration            
-            %---------------------------------------------------------
-            % Water_Valve_Calibration when sensor is touched, release 50 drops every 0.5 seconds
-                
-
-            
+        if S.GUI.ProtocolType==1   % Water_Valve_Calibration
+        %---------------------------------------------------------
+        %  when sensor is touched, release 50 drops every 0.5 seconds
+           
                 ndrops = 50; interval = 0.5;
 
                 sma = AddState(sma, 'Name', 'TrigTrialStart', ...                    
@@ -184,427 +184,180 @@ function RewardConditioning()
                     'StateChangeConditions', {'Tup', 'exit'}, ...
                     'OutputActions', {});
 
-                
-%%
+        else
+            
+        %% Tasks 
+        
+        % Default transitions
+        SampleState = 'SamplePeriod';
+        SampleTup = 'Delay';
+        AnswerTup = 'NoResponse';
+        DelayTrig = []; % nothing happens during delay licking
+        lickDelay = 0.025; % punish for 3 licks in 50 ms
+        
+        % rewarded?
+        yy = rand(); if yy<rewardProb, doReward=1; else, doReward=0; end
+        
+        if doReward 
+            DelayTup = 'Reward'; LickAction = 'Reward';
+        else
+            DelayTup = 'StopLicking'; LickAction = 'StopLicking';
+        end
+        
+        switch S.GUI.ProtocolType
             case 2          % Licking
             %---------------------------------------------------------
             % Each lick is rewarded with reward
-            
+                SampleState = 'WaitForLick'; PolePos = [];
+                LickAction = 'Reward';
+         
                 
-                BpodSystem.Data.TrialSettings(currentTrial) = S; % Adds the settings used for the current trial to the Data struct (to be saved after the trial ends)
-                BpodSystem.Data.TrialTypes(currentTrial) = TrialTypes(currentTrial); % Adds the trial type of the current trial to data
-
-                sma = AddState(sma, 'Name', 'WaitForLick', ...
-                    'Timer', 300,...
-                    'StateChangeConditions', {'Port1In', 'Reward', 'Tup', 'NoResponse'}, ...
-                    'OutputActions', {});
-                sma = AddState(sma, 'Name', 'Reward', ...
-                    'Timer', S.GUI.WaterValveTime,...
-                    'StateChangeConditions', {'Tup', 'exit'}, ...
-                    'OutputActions',  io.WaterOutput);
-                sma = AddState(sma, 'Name', 'NoResponse', ...
-                    'Timer', 0.05,...
-                    'StateChangeConditions', {'Tup', 'exit'}, ...
-                    'OutputActions', {});
-
-
-                
-%%
             case 3          % 'Pole_Delay_Reward'
             %---------------------------------------------------------                
                 % Stim-Pole comes in, Reward is delivered after Delay
                 % No punishment and no reqt for licking
                 % Pole stays in throughout
+                PolePos = io.PoleOutput;
 
-                LickAction = '';  % licking changes nothing
-
-                BpodSystem.Data.TrialSettings(currentTrial) = S; % Adds the settings used for the current trial to the Data struct (to be saved after the trial ends)
-                BpodSystem.Data.TrialTypes(currentTrial) = TrialTypes(currentTrial); % Adds the trial type of the current trial to data
-
-                
-                sma = AddState(sma, 'Name', 'TrigTrialStart', ...
-                    'Timer', S.GUI.PreSamplePeriod, ...
-                    'StateChangeCondition',{'Tup', 'SamplePeriod'}, ...
-                    'OutputActions', [io.AcqTrig io.CameraTrig]);
-
-                % Add bitcode here
-                sma = AddBitcode(sma, currentTrial, io.Bitcode, [io.AcqTrig io.CameraTrig], 'SamplePeriod');
-
-                sma = AddState(sma, 'Name', 'SamplePeriod', ...                         % pole in
-                    'Timer', S.GUI.SamplePeriod, ...
-                    'StateChangeConditions', {'Tup', 'Delay'}, ...
-                    'OutputActions', [io.PoleOutput io.AcqTrig io.CameraTrig]);   
-
-                
-                sma = AddState(sma, 'Name', 'Delay', ...                         % pole still in.. keep waiting
-                    'Timer', S.GUI.Delay, ...
-                    'StateChangeConditions', {'Tup', 'Reward'}, ...
-                    'OutputActions', [io.PoleOutput io.AcqTrig io.CameraTrig]);   
-
-                sma = AddState(sma, 'Name', 'Reward', ...                               % turn on water
-                    'Timer', S.GUI.WaterValveTime, ...
-                    'StateChangeConditions', {'Tup', 'RewardConsumption'}, ...
-                    'OutputActions', [io.PoleOutput io.WaterOutput io.AcqTrig io.CameraTrig]);
-
-                sma = AddState(sma, 'Name', 'RewardConsumption', ...                    % reward consumption
-                    'Timer', S.GUI.ConsumptionPeriod, ...
-                    'StateChangeConditions', {'Tup', 'StopLicking'}, ...
-                    'OutputActions', [io.PoleOutput io.AcqTrig io.CameraTrig]);
-
-
-                sma = AddState(sma, 'Name', 'StopLicking', ...                          % stop licking before advancing to next trial
-                    'Timer', S.GUI.StopLickingPeriod, ...
-                    'StateChangeConditions', {'Port1In', 'StopLickingReturn', 'Tup', 'TrialEnd'}, ...
-                    'OutputActions', [io.PoleOutput io.AcqTrig io.CameraTrig]);
-
-                sma = AddState(sma, 'Name', 'StopLickingReturn', ...                    % return to stop licking
-                    'Timer', 0.01, ...
-                    'StateChangeConditions', {'Tup', 'StopLicking'}, ...
-                    'OutputActions',[io.PoleOutput io.AcqTrig io.CameraTrig]);
-
-                sma = AddState(sma, 'Name', 'TrialEnd', ...                             % pole out and trial end
-                    'Timer', 0.05, ...
-                    'StateChangeConditions', {'Tup', 'exit'}, ...
-                    'OutputActions', {});
-
-%%
             case 4          % 'Pole_Trace_Delay_Reward'
             %---------------------------------------------------------                
                 % Stim-Pole comes in, stays only for sample period
                 % Reward is delivered after Delay
-                % No punishment and no reqt for licking
+                % No punishment and no reqt for licking                
+                PolePos = [];
 
-
-                BpodSystem.Data.TrialSettings(currentTrial) = S; % Adds the settings used for the current trial to the Data struct (to be saved after the trial ends)
-                BpodSystem.Data.TrialTypes(currentTrial) = TrialTypes(currentTrial); % Adds the trial type of the current trial to data
-
-                
-                sma = AddState(sma, 'Name', 'TrigTrialStart', ...
-                    'Timer', S.GUI.PreSamplePeriod, ...
-                    'StateChangeCondition',{'Tup', 'SamplePeriod'}, ...
-                    'OutputActions', [io.AcqTrig io.CameraTrig]);
-
-                % Add bitcode here
-                sma = AddBitcode(sma, currentTrial, io.Bitcode, [io.AcqTrig io.CameraTrig], 'SamplePeriod');
-
-                sma = AddState(sma, 'Name', 'SamplePeriod', ...                         % pole in
-                    'Timer', S.GUI.SamplePeriod, ...
-                    'StateChangeConditions', {'Tup', 'Delay'}, ...
-                    'OutputActions', [io.PoleOutput io.AcqTrig io.CameraTrig]);   
-
-                
-                sma = AddState(sma, 'Name', 'Delay', ...                         % pole out and wait..
-                    'Timer', S.GUI.Delay, ...
-                    'StateChangeConditions', {'Tup', 'Reward'}, ...
-                    'OutputActions', [io.AcqTrig io.CameraTrig]);   
-
-                sma = AddState(sma, 'Name', 'Reward', ...                               % turn on water
-                    'Timer', S.GUI.WaterValveTime, ...
-                    'StateChangeConditions', {'Tup', 'RewardConsumption'}, ...
-                    'OutputActions', [io.WaterOutput io.AcqTrig io.CameraTrig]);
-
-                sma = AddState(sma, 'Name', 'RewardConsumption', ...                    % reward consumption
-                    'Timer', S.GUI.ConsumptionPeriod, ...
-                    'StateChangeConditions', {'Tup', 'StopLicking'}, ...
-                    'OutputActions', [io.AcqTrig io.CameraTrig]);
-
-
-                sma = AddState(sma, 'Name', 'StopLicking', ...                          % stop licking before advancing to next trial
-                    'Timer', S.GUI.StopLickingPeriod, ...
-                    'StateChangeConditions', {'Port1In', 'StopLickingReturn', 'Tup', 'TrialEnd'}, ...
-                    'OutputActions', [io.AcqTrig io.CameraTrig]);
-
-                sma = AddState(sma, 'Name', 'StopLickingReturn', ...                    % return to stop licking
-                    'Timer', 0.01, ...
-                    'StateChangeConditions', {'Tup', 'StopLicking'}, ...
-                    'OutputActions',[io.AcqTrig io.CameraTrig]);
-
-                sma = AddState(sma, 'Name', 'TrialEnd', ...                             % trial end
-                    'Timer', 0.05, ...
-                    'StateChangeConditions', {'Tup', 'exit'}, ...
-                    'OutputActions', {});
-                
-  
-
-%%                
             case 5          % 'Pole_Delay_Response'
             %---------------------------------------------------------     
                 % operant conditioning
                 % reward is delivered after delay only if there is licking
                 % in answer period
-                
-
-                % only go trials
-                LickAction = 'Reward';
-                
-                BpodSystem.Data.TrialSettings(currentTrial) = S; % Adds the settings used for the current trial to the Data struct (to be saved after the trial ends)
-                BpodSystem.Data.TrialTypes(currentTrial) = TrialTypes(currentTrial); % Adds the trial type of the current trial to data
-
-
-                sma = AddState(sma, 'Name', 'TrigTrialStart', ...                       % pre-sample
-                    'Timer', S.GUI.PreSamplePeriod, ...
-                    'StateChangeCondition',{'Tup', 'SamplePeriod'}, ...
-                    'OutputActions', [io.AcqTrig io.CameraTrig]);
-
-                % Add bitcode here
-                sma = AddBitcode(sma, currentTrial, io.Bitcode, [io.AcqTrig io.CameraTrig], 'SamplePeriod');
-
-                sma = AddState(sma, 'Name', 'SamplePeriod', ...                         % pole in
-                    'Timer', S.GUI.SamplePeriod, ...
-                    'StateChangeConditions', {'Tup', 'Delay'}, ...
-                    'OutputActions', [io.PoleOutput io.AcqTrig io.CameraTrig]);   
+                DelayTup = 'AnswerPeriod'; % need reward for lick
+                PolePos = io.PoleOutput;
                 
                 
-                sma = AddState(sma, 'Name', 'Delay', ...                                % pole in
-                    'Timer', S.GUI.Delay, ...
-                    'StateChangeConditions', {'Tup', 'AnswerPeriod'}, ...
-                    'OutputActions', [io.PoleOutput io.AcqTrig io.CameraTrig]);                   
-                
-                sma = AddState(sma, 'Name', 'AnswerPeriod', ...                         % pole still in and wait for response
-                    'Timer', S.GUI.AnswerPeriod, ...
-                    'StateChangeConditions', {'Port1In', LickAction, 'Tup', 'NoResponse'}, ...
-                    'OutputActions', [io.PoleOutput io.AcqTrig io.CameraTrig]);
-
-                sma = AddState(sma, 'Name', 'Reward', ...                               % turn on water
-                    'Timer', S.GUI.WaterValveTime, ...
-                    'StateChangeConditions', {'Tup', 'RewardConsumption'}, ...
-                    'OutputActions', [io.PoleOutput io.WaterOutput io.AcqTrig io.CameraTrig]);
-
-                sma = AddState(sma, 'Name', 'RewardConsumption', ...                    % reward consumption
-                    'Timer', S.GUI.ConsumptionPeriod, ...
-                    'StateChangeConditions', {'Tup', 'StopLicking'}, ...
-                    'OutputActions', [io.PoleOutput io.AcqTrig io.CameraTrig]);
-
-                sma = AddState(sma, 'Name', 'NoResponse', ...                           % no response
-                    'Timer', 0.002, ...
-                    'StateChangeConditions', {'Tup', 'StopLicking'}, ...
-                    'OutputActions', [io.PoleOutput io.AcqTrig io.CameraTrig]);
-
-                sma = AddState(sma, 'Name', 'StopLicking', ...                          % stop licking before advancing to next trial
-                    'Timer', S.GUI.StopLickingPeriod, ...
-                    'StateChangeConditions', {'Port1In', 'StopLickingReturn', 'Tup', 'TrialEnd'}, ...
-                    'OutputActions', [io.PoleOutput io.AcqTrig io.CameraTrig]);
-
-                sma = AddState(sma, 'Name', 'StopLickingReturn', ...                    % return to stop licking
-                    'Timer', 0.01, ...
-                    'StateChangeConditions', {'Tup', 'StopLicking'}, ...
-                    'OutputActions',[io.PoleOutput io.AcqTrig io.CameraTrig]);
-
-                sma = AddState(sma, 'Name', 'TrialEnd', ...                             % trial end
-                    'Timer', 0.05, ...
-                    'StateChangeConditions', {'Tup', 'exit'}, ...
-                    'OutputActions', {});
-
-                
-                
-%%                
             case 6          % 'Pole_Trace_Delay_Response'
             %---------------------------------------------------------     
                 % operant conditioning
                 % reward is delivered after delay only if there is licking
                 % in answer period
-                
-
-                % only go trials
-                LickAction = 'Reward';
-                
-                BpodSystem.Data.TrialSettings(currentTrial) = S; % Adds the settings used for the current trial to the Data struct (to be saved after the trial ends)
-                BpodSystem.Data.TrialTypes(currentTrial) = TrialTypes(currentTrial); % Adds the trial type of the current trial to data
-
-                sma = AddState(sma, 'Name', 'TrigTrialStart', ...                       % pre-sample
-                    'Timer', S.GUI.PreSamplePeriod, ...
-                    'StateChangeCondition',{'Tup', 'SamplePeriod'}, ...
-                    'OutputActions', [io.AcqTrig io.CameraTrig]);
-
-                % Add bitcode here
-                sma = AddBitcode(sma, currentTrial, io.Bitcode, [io.AcqTrig io.CameraTrig], 'SamplePeriod');
-
-                sma = AddState(sma, 'Name', 'SamplePeriod', ...                         % pole in
-                    'Timer', S.GUI.SamplePeriod, ...
-                    'StateChangeConditions', {'Tup', 'Delay'}, ...
-                    'OutputActions', [io.PoleOutput io.AcqTrig io.CameraTrig]);   
-                
-                
-                sma = AddState(sma, 'Name', 'Delay', ...                                % pole out and wait
-                    'Timer', S.GUI.Delay, ...
-                    'StateChangeConditions', {'Tup', 'AnswerPeriod'}, ...
-                    'OutputActions', [ io.AcqTrig io.CameraTrig]);                   
-                
-                sma = AddState(sma, 'Name', 'AnswerPeriod', ...                         % and wait for response
-                    'Timer', S.GUI.AnswerPeriod, ...
-                    'StateChangeConditions', {'Port1In', LickAction, 'Tup', 'NoResponse'}, ...
-                    'OutputActions', [io.AcqTrig io.CameraTrig]);
-
-                sma = AddState(sma, 'Name', 'Reward', ...                               % turn on water
-                    'Timer', S.GUI.WaterValveTime, ...
-                    'StateChangeConditions', {'Tup', 'RewardConsumption'}, ...
-                    'OutputActions', [io.WaterOutput io.AcqTrig io.CameraTrig]);
-
-                sma = AddState(sma, 'Name', 'RewardConsumption', ...                    % reward consumption
-                    'Timer', S.GUI.ConsumptionPeriod, ...
-                    'StateChangeConditions', {'Tup', 'StopLicking'}, ...
-                    'OutputActions', [io.AcqTrig io.CameraTrig]);
-
-                sma = AddState(sma, 'Name', 'NoResponse', ...                           % no response
-                    'Timer', 0.002, ...
-                    'StateChangeConditions', {'Tup', 'StopLicking'}, ...
-                    'OutputActions', [io.AcqTrig io.CameraTrig]);
-
-                sma = AddState(sma, 'Name', 'StopLicking', ...                          % stop licking before advancing to next trial
-                    'Timer', S.GUI.StopLickingPeriod, ...
-                    'StateChangeConditions', {'Port1In', 'StopLickingReturn', 'Tup', 'TrialEnd'}, ...
-                    'OutputActions', [io.AcqTrig io.CameraTrig]);
-
-                sma = AddState(sma, 'Name', 'StopLickingReturn', ...                    % return to stop licking
-                    'Timer', 0.01, ...
-                    'StateChangeConditions', {'Tup', 'StopLicking'}, ...
-                    'OutputActions',[io.AcqTrig io.CameraTrig]);
-
-                sma = AddState(sma, 'Name', 'TrialEnd', ...                             % trial end
-                    'Timer', 0.05, ...
-                    'StateChangeConditions', {'Tup', 'exit'}, ...
-                    'OutputActions', {});
-                
+                DelayTup = 'AnswerPeriod'; % need reward for lick
+                PolePos = [];
 
                 
-%%                
             case 7          % Pole_Nolick_delay_Reward',            
             %---------------------------------------------------------    
             % prevent anticipatory licking (< 3 licks in 50 ms) ->
             % restarts delay for fewer licks, else no reward
+            PolePos = [];
+            SampleTup = 'Delay_nolick';
+            DelayTrig = {'GlobalTimerTrig', 1}; % start delay timer
             
-            
-                LickAction = 'Reward';
-                EarlyLickAction = 'StopLicking'; % no reward for early lick
-               
-                BpodSystem.Data.TrialSettings(currentTrial) = S; % Adds the settings used for the current trial to the Data struct (to be saved after the trial ends)
-                BpodSystem.Data.TrialTypes(currentTrial) = TrialTypes(currentTrial); % Adds the trial type of the current trial to data
-
-                sma = AddState(sma, 'Name', 'TrigTrialStart', ...
-                    'Timer', S.GUI.PreSamplePeriod, ...
-                    'StateChangeCondition',{'Tup', 'SamplePeriod'}, ...
-                    'OutputActions', [io.AcqTrig io.CameraTrig]);
-
-                % Add bitcode here
-                sma = AddBitcode(sma, currentTrial, io.Bitcode, [io.AcqTrig io.CameraTrig], 'SamplePeriod');
-
-                sma = AddState(sma, 'Name', 'SamplePeriod', ...                         % pole in, deliver reward
-                    'Timer', S.GUI.SamplePeriod, ...
-                    'StateChangeConditions', {'Tup', 'Delay'}, ...
-                    'OutputActions', [io.PoleOutput io.AcqTrig io.CameraTrig]);   
-                
-                sma = AddState(sma, 'Name', 'Delay', ...                         % pole in
-                    'Timer', S.GUI.Delay, ...
-                    'StateChangeConditions', {'Port1In',  'Delay_lick2', 'Tup', 'Reward'}, ...
-                    'OutputActions', [io.PoleOutput io.AcqTrig io.CameraTrig]);    
-                sma = AddState(sma, 'Name', 'Delay_lick2', ...                         % pole in
-                    'Timer', 0.025, ...
-                    'StateChangeConditions', {'Port1In', 'Delay_lick3', 'Tup', 'Delay'}, ...
-                    'OutputActions', [io.PoleOutput io.AcqTrig io.CameraTrig]);    
-                sma = AddState(sma, 'Name', 'Delay_lick3', ...                         % pole in
-                    'Timer', 0.025, ...
-                    'StateChangeConditions', {'Port1In', EarlyLickAction, 'Tup', 'Delay'}, ...
-                    'OutputActions', [io.PoleOutput io.AcqTrig io.CameraTrig]);    
-               
-
-                sma = AddState(sma, 'Name', 'Reward', ...                               % turn on water
-                    'Timer', S.GUI.WaterValveTime, ...
-                    'StateChangeConditions', {'Tup', 'RewardConsumption'}, ...
-                    'OutputActions', [io.PoleOutput io.WaterOutput io.AcqTrig io.CameraTrig]);
-
-                sma = AddState(sma, 'Name', 'RewardConsumption', ...                    % reward consumption
-                    'Timer', S.GUI.ConsumptionPeriod, ...
-                    'StateChangeConditions', {'Tup', 'StopLicking'}, ...
-                    'OutputActions', [io.PoleOutput io.AcqTrig io.CameraTrig]);
-
-
-                sma = AddState(sma, 'Name', 'StopLicking', ...                          % stop licking before advancing to next trial
-                    'Timer', S.GUI.StopLickingPeriod, ...
-                    'StateChangeConditions', {'Port1In', 'StopLickingReturn', 'Tup', 'TrialEnd'}, ...
-                    'OutputActions', [io.PoleOutput io.AcqTrig io.CameraTrig]);
-
-                sma = AddState(sma, 'Name', 'StopLickingReturn', ...                    % return to stop licking
-                    'Timer', 0.01, ...
-                    'StateChangeConditions', {'Tup', 'StopLicking'}, ...
-                    'OutputActions',[io.PoleOutput io.AcqTrig io.CameraTrig]);
-
-                sma = AddState(sma, 'Name', 'TrialEnd', ...                             % pole out and trial end
-                    'Timer', 0.05, ...
-                    'StateChangeConditions', {'Tup', 'exit'}, ...
-                    'OutputActions', {});
-
 
         
-%%
         case 8     % Pole_Nolick_delay_Response
             %---------------------------------------------------------    
             % timed response (delay operant conditioning)
-
-                LickAction = 'Reward';
-                EarlyLickAction = 'StopLicking'; % no reward for early lick
-                
-                BpodSystem.Data.TrialSettings(currentTrial) = S; % Adds the settings used for the current trial to the Data struct (to be saved after the trial ends)
-                BpodSystem.Data.TrialTypes(currentTrial) = TrialTypes(currentTrial); % Adds the trial type of the current trial to data
-
-                sma = AddState(sma, 'Name', 'TrigTrialStart', ...
-                    'Timer', S.GUI.PreSamplePeriod, ...
-                    'StateChangeCondition',{'Tup', 'SamplePeriod'}, ...
-                    'OutputActions', [io.AcqTrig io.CameraTrig]);
-
-                % Add bitcode here
-                sma = AddBitcode(sma, currentTrial, io.Bitcode, [io.AcqTrig io.CameraTrig], 'SamplePeriod');
-
-                sma = AddState(sma, 'Name', 'SamplePeriod', ...                         % pole in, deliver reward
-                    'Timer', S.GUI.SamplePeriod, ...
-                    'StateChangeConditions', {'Tup', 'Delay'}, ...
-                    'OutputActions', [io.PoleOutput io.AcqTrig io.CameraTrig]);   
-                
-                sma = AddState(sma, 'Name', 'Delay', ...                                % pole in
-                    'Timer', S.GUI.Delay, ...
-                    'StateChangeConditions', {'Port1In', EarlyLickAction, 'Tup', 'AnswerPeriod'}, ...
-                    'OutputActions', [io.PoleOutput io.AcqTrig io.CameraTrig]);    
-               
-                
-                sma = AddState(sma, 'Name', 'AnswerPeriod', ...                         % wait for response
-                    'Timer', S.GUI.AnswerPeriod, ...
-                    'StateChangeConditions', {'Port1In', LickAction, 'Tup', 'NoResponse'}, ...
-                    'OutputActions', [io.PoleOutput io.AcqTrig io.CameraTrig]);
-
-                sma = AddState(sma, 'Name', 'Reward', ...                               % turn on water
-                    'Timer', S.GUI.WaterValveTime, ...
-                    'StateChangeConditions', {'Tup', 'RewardConsumption'}, ...
-                    'OutputActions', [io.PoleOutput io.WaterOutput io.AcqTrig io.CameraTrig]);
-
-                sma = AddState(sma, 'Name', 'RewardConsumption', ...                    % reward consumption
-                    'Timer', S.GUI.ConsumptionPeriod, ...
-                    'StateChangeConditions', {'Tup', 'StopLicking'}, ...
-                    'OutputActions', [io.PoleOutput io.AcqTrig io.CameraTrig]);
-
-                sma = AddState(sma, 'Name', 'NoResponse', ...                           % no response
-                    'Timer', 0.002, ...
-                    'StateChangeConditions', {'Tup', 'StopLicking'}, ...
-                    'OutputActions', [io.PoleOutput io.AcqTrig io.CameraTrig]);
-
-                sma = AddState(sma, 'Name', 'StopLicking', ...                          % stop licking before advancing to next trial
-                    'Timer', S.GUI.StopLickingPeriod, ...
-                    'StateChangeConditions', {'Port1In', 'StopLickingReturn', 'Tup', 'TrialEnd'}, ...
-                    'OutputActions', [io.PoleOutput io.AcqTrig io.CameraTrig]);
-
-                sma = AddState(sma, 'Name', 'StopLickingReturn', ...                    % return to stop licking
-                    'Timer', 0.01, ...
-                    'StateChangeConditions', {'Tup', 'StopLicking'}, ...
-                    'OutputActions',[io.PoleOutput io.AcqTrig io.CameraTrig]);
-
-                sma = AddState(sma, 'Name', 'TrialEnd', ...                             % pole out and trial end
-                    'Timer', 0.05, ...
-                    'StateChangeConditions', {'Tup', 'exit'}, ...
-                    'OutputActions', {});
+            PolePos = [];
+            SampleTup = 'Delay_nolick';
+            DelayTrig = {'GlobalTimerTrig', 1}; % start delay timer
+            DelayTup = 'AnswerPeriod'; % need reward for lick
 
                 
         end
         
+        % can add output channel for light or sound later - to enforce no
+        % licking period
+        sma = SetGlobalTimer(sma, 'TimerID', 1, 'Duration', delay, 'OnsetDelay', 0); 
         
-        %%
+        sma = AddState(sma, 'Name', 'TrigTrialStart', ...                       % pre-sample
+                'Timer', S.GUI.PreSamplePeriod, ...
+                'StateChangeCondition',{'Tup', SampleState}, ...
+                'OutputActions', [io.AcqTrig io.CameraTrig]);
+            
+        sma = AddState(sma, 'Name', 'WaitForLick', ...
+                    'Timer', 300,...
+                    'StateChangeConditions', {'Port1In', 'Reward', 'Tup', 'NoResponse'}, ...
+                    'OutputActions', {});
+        
+        sma = AddBitcode(sma, currentTrial, io.Bitcode, [io.AcqTrig io.CameraTrig], 'SamplePeriod');
+
+        sma = AddState(sma, 'Name', 'SamplePeriod', ...                         % pole in
+            'Timer', S.GUI.SamplePeriod, ...
+            'StateChangeConditions', {'Tup',SampleTup}, ...
+            'OutputActions', [io.PoleOutput io.AcqTrig io.CameraTrig]);   
+
+
+        % delay states
+        % ----------------------------------------------------------------
+        sma = AddState(sma, 'Name', 'Delay', ...                                % just wait (no punish for licks)
+            'Timer', delay, ...
+            'StateChangeConditions', {'Tup', DelayTup}, ...
+            'OutputActions', [PolePos io.AcqTrig io.CameraTrig]);                   
+
+        % enforce no licking (no 3 licks within 50 ms; isolated licks ok)
+        sma = AddState(sma, 'Name', 'Delay_nolick', ...                         
+            'Timer', delay, ...
+            'StateChangeConditions', {'Tup', DelayTup, 'Port1In', 'Delay_nolick2'}, ... % move if lick
+            'OutputActions', [DelayTrig PolePos io.AcqTrig io.CameraTrig]);     % start delay timer and wait...
+
+        sma = AddState(sma, 'Name', 'Delay_nolick1', ...                         % wait ...
+            'Timer', delay, ...
+            'StateChangeConditions', {'Tup', DelayTup, 'GlobalTimer1_End', DelayTup, 'Port1In', 'Delay_nolick2'}, ... % move if lick
+            'OutputActions', [PolePos io.AcqTrig io.CameraTrig]);                   
+        
+        
+        sma = AddState(sma, 'Name', 'Delay_nolick2', ...                         % wait for 3rd lick
+            'Timer', lickDelay, ...
+            'StateChangeConditions', {'Tup', 'Delay_nolick1', 'GlobalTimer1_End', DelayTup, 'Port1In', 'Delay_nolick3'}, ... % move if lick
+            'OutputActions', [PolePos io.AcqTrig io.CameraTrig]);                   
+        
+        
+        
+        sma = AddState(sma, 'Name', 'Delay_nolick3', ...                         % wait for 3rd lick
+            'Timer', lickDelay, ...
+            'StateChangeConditions', {'Tup', 'Delay_nolick1', 'GlobalTimer1_End', DelayTup, 'Port1In', 'StopLicking'}, ... % punish if licking
+            'OutputActions', [PolePos io.AcqTrig io.CameraTrig]);                   
+        
+        
+        % response and reward states
+        % -----------------------------------------------------------------
+        sma = AddState(sma, 'Name', 'AnswerPeriod', ...                         % pole still in and wait for response
+            'Timer', S.GUI.AnswerPeriod, ...
+            'StateChangeConditions', {'Port1In', LickAction, 'Tup', AnswerTup}, ...
+            'OutputActions', [PolePos io.AcqTrig io.CameraTrig]);
+
+        sma = AddState(sma, 'Name', 'Reward', ...                               % turn on water
+            'Timer', S.GUI.WaterValveTime, ...
+            'StateChangeConditions', {'Tup', 'RewardConsumption'}, ...
+            'OutputActions', [PolePos io.WaterOutput io.AcqTrig io.CameraTrig]);
+
+        sma = AddState(sma, 'Name', 'RewardConsumption', ...                    % reward consumption
+            'Timer', S.GUI.ConsumptionPeriod, ...
+            'StateChangeConditions', {'Tup', 'StopLicking'}, ...
+            'OutputActions', [PolePos io.AcqTrig io.CameraTrig]);
+
+        sma = AddState(sma, 'Name', 'NoResponse', ...                           % no response
+            'Timer', 0.002, ...
+            'StateChangeConditions', {'Tup', 'StopLicking'}, ...
+            'OutputActions', [PolePos io.AcqTrig io.CameraTrig]);
+
+        sma = AddState(sma, 'Name', 'StopLicking', ...                          % stop licking before advancing to next trial
+            'Timer', S.GUI.StopLickingPeriod, ...
+            'StateChangeConditions', {'Port1In', 'StopLickingReturn', 'Tup', 'TrialEnd'}, ...
+            'OutputActions', [PolePos io.AcqTrig io.CameraTrig]);
+
+        sma = AddState(sma, 'Name', 'StopLickingReturn', ...                    % return to stop licking
+            'Timer', 0.01, ...
+            'StateChangeConditions', {'Tup', 'StopLicking'}, ...
+            'OutputActions',[PolePos io.AcqTrig io.CameraTrig]);
+
+        sma = AddState(sma, 'Name', 'TrialEnd', ...                             % trial end
+            'Timer', 0.05, ...
+            'StateChangeConditions', {'Tup', 'exit'}, ...
+            'OutputActions', {});
+
+        end
+        
         
         SendStateMatrix(sma);
         RawEvents = RunStateMatrix;         % this step takes a long time and variable (seem to wait for GUI to update, which takes a long time)
@@ -649,24 +402,31 @@ function UpdatePerfOutcomePlot(TrialTypes, Data)
 
     for x = 1:Data.nTrials
 
-        if Data.TrialSettings(x).GUI.ProtocolType > 2
         % reward outcome = 1
+        if Data.TrialSettings(x).GUI.ProtocolType > 2        
             if ~isnan(Data.RawEvents.Trial{x}.States.Reward(1))
                 Outcomes(x) = 1;    % correct
                 BpodSystem.Data.TrialOutcomes(x) = 1;
-
             else
-                Outcomes(x) = 0;    % no reward
+                Outcomes(x) = 0;    % no reward given
                 BpodSystem.Data.TrialOutcomes(x) = 0;
             end
         end
         
-        % no response outcome = 2
+        % operant (no lick)
         if Data.TrialSettings(x).GUI.ProtocolType==5 || Data.TrialSettings(x).GUI.ProtocolType==6  || Data.TrialSettings(x).GUI.ProtocolType==8
             % no response
             if ~isnan(Data.RawEvents.Trial{x}.States.NoResponse(1))
-                Outcomes(x) = 2;    % no reward
+                Outcomes(x) = 2;    % no lick, no reward
                 BpodSystem.Data.TrialOutcomes(x) = 2;            
+            end
+        end
+        
+        % lick during delay
+        if Data.TrialSettings(x).GUI.ProtocolType==7 || Data.TrialSettings(x).GUI.ProtocolType==8
+            if isnan(Data.RawEvents.Trial{x}.States.NoResponse(1)) && isnan(Data.RawEvents.Trial{x}.States.Reward(1))
+                Outcomes(x) = 3;    % early licks
+                BpodSystem.Data.TrialOutcomes(x) = 3;         
             end
         end
 
@@ -700,19 +460,23 @@ function PerfOutcomePlot(ax, Ntrials, action, varargin)
 
             toPlot(ind1:ind2) = true;
 
-            miss = (outcomes == 0);
+            norew = (outcomes == 0);
             hit  = (outcomes == 1);
             noresponse  = (outcomes == 2);
+            earlylick = (outcomes == 3);
 
             hold(ax, 'off');
             xdat = find(toPlot&hit);
-            plot(ax, xdat, outcomes(xdat), 'go', 'MarkerSize', sz); hold(ax, 'on');
+            plot(ax, xdat, types(xdat), 'go', 'MarkerSize', sz); hold(ax, 'on'); % plot based on stim type
 
-            xdat = find(toPlot&miss);
-            plot(ax, xdat, outcomes(xdat), 'ro', 'MarkerSize', sz);
+            xdat = find(toPlot&norew);
+            plot(ax, xdat, types(xdat), 'ko', 'MarkerSize', sz);
 
             xdat = find(toPlot&noresponse);
-            plot(ax, xdat, outcomes(xdat), 'kx', 'MarkerSize', sz);
+            plot(ax, xdat, types(xdat), 'ro', 'MarkerSize', sz);
+
+            xdat = find(toPlot&earlylick);
+            plot(ax, xdat, types(xdat), 'rx', 'MarkerSize', sz);
 
             hitpct = 100.*sum(hit)./Ntrials;
             ind40 = max(1, Ntrials-40+1):Ntrials;
@@ -734,12 +498,12 @@ function PerfOutcomePlot(ax, Ntrials, action, varargin)
     %         ind2 = Ntrials;
 
             hold(ax, 'on');
-            plot(ax, Ntrials, currentType+1, 'ko', 'MarkerSize', sz);
+            plot(ax, Ntrials, currentType, 'ko', 'MarkerSize', sz);
             xlim(ax, [ind1 ind1+Ndisplay-1+5]);
 
     end
 
-    set(ax, 'YTick', [0 1 2], 'YTickLabel', {'EarlyLick'; 'Go', 'NoResp'});
+    set(ax, 'YTick', [1 2], 'YTickLabel', {'Cue1'; 'Cue2'});
 
 end
 
