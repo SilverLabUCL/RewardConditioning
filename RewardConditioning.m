@@ -546,9 +546,6 @@ function RewardConditioning()
                 BpodSystem.Data.TrialSettings(currentTrial) = S; % Adds the settings used for the current trial to the Data struct (to be saved after the trial ends)
                 BpodSystem.Data.TrialTypes(currentTrial) = TrialTypes(currentTrial); % Adds the trial type of the current trial to data
 
-                % Move motor into position
-                moveZaberMotors(TrialTypes(currentTrial));
-
                 sma = AddState(sma, 'Name', 'TrigTrialStart', ...
                     'Timer', S.GUI.PreSamplePeriod, ...
                     'StateChangeCondition',{'Tup', 'SamplePeriod'}, ...

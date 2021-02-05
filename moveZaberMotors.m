@@ -2,21 +2,24 @@ function  moveZaberMotors(tType)
 
     global BpodSystem motors
 
-    p = cellfun(@(x) strcmp(x,'Position'),BpodSystem.GUIData.ParameterGUI.ParamNames);
-    motor_param.GoPosition = str2double(get(BpodSystem.GUIHandles.ParameterGUI.Params(p),'String'));
-    
+    p = cellfun(@(x) strcmp(x,'Position1'),BpodSystem.GUIData.ParameterGUI.ParamNames);
+    motor_param.Position1 = str2double(get(BpodSystem.GUIHandles.ParameterGUI.Params(p),'String'));
+
+    p = cellfun(@(x) strcmp(x,'Position2'),BpodSystem.GUIData.ParameterGUI.ParamNames);
+    motor_param.Position2 = str2double(get(BpodSystem.GUIHandles.ParameterGUI.Params(p),'String'));
+
     p = cellfun(@(x) strcmp(x,'MotorMoveTime'),BpodSystem.GUIData.ParameterGUI.ParamNames);
     motor_param.MotorMoveTime = str2double(get(BpodSystem.GUIHandles.ParameterGUI.Params(p),'String'));
     
-    GoPos  = motor_param.GoPosition;
-    NoGoPos  = motor_param.GoPosition; % no separate nogo
-%     NoGoPos = motor_param.NoGoPosition;
-    halfpoint = abs(round(abs(GoPos-NoGoPos)/2)) + min(NoGoPos,GoPos);
+    Pos1  = motor_param.Position1;
+    Pos2  = motor_param.Position2; % no separate nogo
+
+    halfpoint = abs(round(abs(Pos1-Pos2)/2)) + min(Pos2,Pos1);
     
     if tType == 1
-        position = GoPos;
+        position = Pos1;
     else
-        position = NoGoPos;
+        position = Pos2;
     end
 
     tic
