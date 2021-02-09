@@ -1,4 +1,5 @@
 %% HG 2021
+% Trigerred version for Rig 2
 
 function RewardConditioning_Sound()
     
@@ -114,6 +115,7 @@ function RewardConditioning_Sound()
     io.Bitcode = {'BNC2', 1};
     io.CameraTrig = {'WireState', 1};
     io.Punish = {'SoftCode', 3};
+    io.TrialTrigger = 'BNC1High';
    
 
     %% Main trial loop
@@ -234,8 +236,12 @@ function RewardConditioning_Sound()
         % can add output channel for light or sound later - to enforce no
         % licking period
         sma = SetGlobalTimer(sma, 'TimerID', 1, 'Duration', delay, 'OnsetDelay', 0); 
+        sma = AddState(sma, 'Name', 'TrigTrialStart', ...                    % wait for trigger
+                'Timer', 300, ...
+                 'StateChangeCondition',{io.TrialTrigger, 'PreStimulus'}, ...
+                'OutputActions', [io.AcqTrig io.CameraTrig]);
         
-        sma = AddState(sma, 'Name', 'TrigTrialStart', ...                       % pre-sample
+        sma = AddState(sma, 'Name', 'PreStimulus', ...                       % pre-sample
                 'Timer', S.GUI.PreSamplePeriod, ...
                 'StateChangeCondition',{'Tup', SampleState}, ...
                 'OutputActions', [io.AcqTrig io.CameraTrig]);
