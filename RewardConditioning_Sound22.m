@@ -1,6 +1,6 @@
 %% HG 2021
 
-function temp()
+function RewardConditioning_Sound22()
     
     % SETUP
     % You will need:
@@ -72,10 +72,37 @@ function temp()
     BpodSystem.Data.TrialOutcomes = []; % The trial outcomes
 
     %% Initialise plots
-    
-    initialise_plots( true, true );
+    BpodSystem.ProtocolFigures.PerfOutcomePlotFig = figure('Position', [150 800 1600 200], ...
+        'name','Outcome plot','numbertitle','off', 'MenuBar', 'none', 'Resize', 'off', 'Color', [1 1 1]);
+
+    BpodSystem.GUIHandles.PerfOutcomePlot = axes('Position', [.15 .2 .8 .7], 'FontSize', 11);
+
+    uicontrol('Style', 'text', 'String', 'nDisplay: ','Position',[20 170 100 18], ...
+        'HorizontalAlignment', 'left', 'BackgroundColor', [1 1 1], 'FontSize', 11);
+    BpodSystem.GUIHandles.DisplayNTrials = uicontrol('Style','edit','string','100','Position',[125 170 40 18], ...
+        'HorizontalAlignment', 'left', 'BackgroundColor', [1 1 1], 'FontSize', 11);
+
+    uicontrol('Style', 'text', 'String', 'hit % (all): ','Position',[20 140 100 18], ...
+        'HorizontalAlignment', 'left', 'BackgroundColor', [1 1 1], 'FontSize', 11);
+    BpodSystem.GUIHandles.hitpct = uicontrol('Style','text','string','0','Position',[125 140 40 18], ...
+        'HorizontalAlignment', 'left', 'BackgroundColor', [1 1 1], 'FontSize', 11);
+
+    uicontrol('Style', 'text', 'String', 'hit % (40): ','Position',[20 120 100 18], ...
+        'HorizontalAlignment', 'left', 'BackgroundColor', [1 1 1], 'FontSize', 11);
+    BpodSystem.GUIHandles.hitpctrecent = uicontrol('Style','text','string','0','Position',[125 120 40 18], ...
+        'HorizontalAlignment', 'left', 'BackgroundColor', [1 1 1], 'FontSize', 11);
+
+    uicontrol('Style', 'text', 'String', 'Trials: ','Position',[20 40 100 18], ...
+        'HorizontalAlignment', 'left', 'BackgroundColor', [1 1 1], 'FontSize', 11);
+    BpodSystem.GUIHandles.numtrials = uicontrol('Style','text','string','0','Position',[125 40 40 18], ...
+        'HorizontalAlignment', 'left', 'BackgroundColor', [1 1 1], 'FontSize', 11);
+
+    uicontrol('Style', 'text', 'String', 'Rewards: ','Position',[20 20 100 18], ...
+        'HorizontalAlignment', 'left', 'BackgroundColor', [1 1 1], 'FontSize', 11);
+    BpodSystem.GUIHandles.numRewards = uicontrol('Style','text','string','0','Position',[125 20 40 18], ...
+        'HorizontalAlignment', 'left', 'BackgroundColor', [1 1 1], 'FontSize', 11);
+
     PerfOutcomePlot(BpodSystem.GUIHandles.PerfOutcomePlot,1,'init',0);
-    TrialBehPlot( BpodSystem.GUIHandles.LickFig, 1, [] );
     
     % Pause the protocol before starting
     BpodSystem.Status.Pause = 1;
@@ -313,7 +340,6 @@ function temp()
 
             if S.GUI.ProtocolType > 2
                 UpdatePerfOutcomePlot(TrialTypes, BpodSystem.Data);
-                TrialBehPlot(BpodSystem.GUIHandles.LickFig, BpodSystem.Data.nTrials, currentTrial)
             end
 
             SaveBpodSessionData; % Saves the field BpodSystem.Data to the current data file
@@ -464,105 +490,6 @@ end
 %     end
 %     
 % end
-%%
-
-
-function TrialBehPlot(ax, Ntrials, trials)
-
-    global BpodSystem
-    sz = 10;
-    
-    Ndisplay = 40;
-    ind1 = max(1, Ntrials-Ndisplay+1);
-    
-    hold(ax, 'on');
-    
-    % licks
-    for trial=trials
-    if isfield( BpodSystem.Data.RawEvents.Trial{1,trial}.Events, 'Port1In'), licks = BpodSystem.Data.RawEvents.Trial{1,trial}.Events.Port1In; 
-    scatter(ax, licks, ones(size(licks))*trial, sz,'r','filled');
-    end
-    end
-    leg(1) = scatter(ax, NaN, NaN, sz, 'r', 'filled');
-
-
-    for trial=trials
-    plot(ax, BpodSystem.Data.RawEvents.Trial{1,trial}.States.SamplePeriod, [trial,trial], 'k');
-    end
-    leg(2) = plot(ax, NaN, NaN, 'k');
-
-    for trial=trials
-    if isfield(BpodSystem.Data.RawEvents.Trial{1,trial}.States,'Reward')
-    plot(ax, BpodSystem.Data.RawEvents.Trial{1,trial}.States.Reward, [trial,trial], 'b');
-    plot(ax, BpodSystem.Data.RawEvents.Trial{1,trial}.States.RewardConsumption, [trial,trial], 'b');
-    end
-    end
-    leg(3) = plot( ax, NaN, NaN, 'b');
-
-    for trial=trials
-    if isfield(BpodSystem.Data.RawEvents.Trial{1,trial}.States,'AnswerPeriod')
-    plot(ax, BpodSystem.Data.RawEvents.Trial{1,trial}.States.AnswerPeriod, [trial,trial], 'g');
-    end
-    end
-    leg(4) = plot(ax,  NaN, NaN, 'g');
-
-    legend(ax,  leg, 'Licks', 'SamplePeriod', 'Reward and consumption', 'Answer Period');
-    ylim(ax, [ind1 ind1+40]);
-    xlim(ax, [-1, 8] );
-end
-
-function initialise_plots( doOutcome, doLicks )
-
-    global BpodSystem
-    if nargin<2, doLicks=true; end
-    if nargin<1, doOutcome=true'; end
-    
-    if doOutcome
-        BpodSystem.ProtocolFigures.PerfOutcomePlotFig = figure('Position', [150 800 1600 200], ...
-        'name','Outcome plot','numbertitle','off', 'MenuBar', 'none', 'Resize', 'off', 'Color', [1 1 1]);
-
-        BpodSystem.GUIHandles.PerfOutcomePlot = axes('Position', [.15 .2 .8 .7], 'FontSize', 11);
-
-        uicontrol('Style', 'text', 'String', 'nDisplay: ','Position',[20 170 100 18], ...
-            'HorizontalAlignment', 'left', 'BackgroundColor', [1 1 1], 'FontSize', 11);
-        BpodSystem.GUIHandles.DisplayNTrials = uicontrol('Style','edit','string','100','Position',[125 170 40 18], ...
-            'HorizontalAlignment', 'left', 'BackgroundColor', [1 1 1], 'FontSize', 11);
-
-        uicontrol('Style', 'text', 'String', 'hit % (all): ','Position',[20 140 100 18], ...
-            'HorizontalAlignment', 'left', 'BackgroundColor', [1 1 1], 'FontSize', 11);
-        BpodSystem.GUIHandles.hitpct = uicontrol('Style','text','string','0','Position',[125 140 40 18], ...
-            'HorizontalAlignment', 'left', 'BackgroundColor', [1 1 1], 'FontSize', 11);
-
-        uicontrol('Style', 'text', 'String', 'hit % (40): ','Position',[20 120 100 18], ...
-            'HorizontalAlignment', 'left', 'BackgroundColor', [1 1 1], 'FontSize', 11);
-        BpodSystem.GUIHandles.hitpctrecent = uicontrol('Style','text','string','0','Position',[125 120 40 18], ...
-            'HorizontalAlignment', 'left', 'BackgroundColor', [1 1 1], 'FontSize', 11);
-
-        uicontrol('Style', 'text', 'String', 'Trials: ','Position',[20 40 100 18], ...
-            'HorizontalAlignment', 'left', 'BackgroundColor', [1 1 1], 'FontSize', 11);
-        BpodSystem.GUIHandles.numtrials = uicontrol('Style','text','string','0','Position',[125 40 40 18], ...
-            'HorizontalAlignment', 'left', 'BackgroundColor', [1 1 1], 'FontSize', 11);
-
-        uicontrol('Style', 'text', 'String', 'Rewards: ','Position',[20 20 100 18], ...
-            'HorizontalAlignment', 'left', 'BackgroundColor', [1 1 1], 'FontSize', 11);
-        BpodSystem.GUIHandles.numRewards = uicontrol('Style','text','string','0','Position',[125 20 40 18], ...
-            'HorizontalAlignment', 'left', 'BackgroundColor', [1 1 1], 'FontSize', 11);
-
-    
-    end
-
-    
-    if doLicks
-        
-        BpodSystem.ProtocolFigures.LickFig = figure('Position', [150 400 800 400], ...
-            'name','Trial behaviour plot','numbertitle','off', 'MenuBar', 'none', 'Resize', 'off', 'Color', [1 1 1]);
-
-        BpodSystem.GUIHandles.LickFig = axes('Position', [.15 .2 .8 .7], 'FontSize', 11);
-    end
-    
-    
-end
-
 
 
 %% Assemble Bitcode
