@@ -532,6 +532,8 @@ function TrialBehPlot(ax, Ntrials, trials, lickevent)
     sz = 10;
     if nargin<4, lickevent = 'BNC2High'; end
         
+    trigIn = 'BNC1High';
+    
     Ndisplay = 40;
     ind1 = max(1, Ntrials-Ndisplay+1);
     
@@ -540,9 +542,14 @@ function TrialBehPlot(ax, Ntrials, trials, lickevent)
     
     leg(1) = scatter(ax, NaN, NaN, sz, 'r', 'filled');
 
+    try
+        TrialStart = BpodSystem.Data.RawEvents.Trial{trials}.States.TrigTrialStart(2);
+    catch
+        TrialStart = arrayfun( @(jj) 0, trials);
+    end
 
     for trial=trials
-    plot(ax, BpodSystem.Data.RawEvents.Trial{1,trial}.States.SamplePeriod, [trial,trial], 'k');
+    plot(ax, BpodSystem.Data.RawEvents.Trial{1,trial}.States.SamplePeriod - TrialStart, [trial,trial], 'k');
     end
     leg(2) = plot(ax, NaN, NaN, 'k');
 
@@ -555,8 +562,8 @@ function TrialBehPlot(ax, Ntrials, trials, lickevent)
             lw=3;
             end
         end
-    plot(ax, BpodSystem.Data.RawEvents.Trial{1,trial}.States.Reward, [trial,trial], 'b', 'linewidth',lw);
-    plot(ax, BpodSystem.Data.RawEvents.Trial{1,trial}.States.RewardConsumption, [trial,trial], 'b', 'linewidth',lw);
+    plot(ax, BpodSystem.Data.RawEvents.Trial{1,trial}.States.Reward - TrialStart, [trial,trial], 'b', 'linewidth',lw);
+    plot(ax, BpodSystem.Data.RawEvents.Trial{1,trial}.States.RewardConsumption - TrialStart, [trial,trial], 'b', 'linewidth',lw);
     end
     end
     
@@ -564,20 +571,29 @@ function TrialBehPlot(ax, Ntrials, trials, lickevent)
 
     for trial=trials
     if isfield(BpodSystem.Data.RawEvents.Trial{1,trial}.States,'AnswerPeriod')
-    plot(ax, BpodSystem.Data.RawEvents.Trial{1,trial}.States.AnswerPeriod, [trial,trial], 'g');
+    plot(ax, BpodSystem.Data.RawEvents.Trial{1,trial}.States.AnswerPeriod - TrialStart, [trial,trial], 'g');
     end
     end
     leg(4) = plot(ax,  NaN, NaN, 'g');
 
     % licks
     for trial=trials
-    if isfield( BpodSystem.Data.RawEvents.Trial{1,trial}.Events, lickevent), licks = BpodSystem.Data.RawEvents.Trial{1,trial}.Events.(lickevent); 
+    if isfield( BpodSystem.Data.RawEvents.Trial{1,trial}.Events, lickevent), licks = BpodSystem.Data.RawEvents.Trial{1,trial}.Events.(lickevent) - TrialStart; 
     scatter(ax, licks, ones(size(licks))*trial, sz,'r','filled');
     end
     end
     
+    for trial=trials
+    if isfield( BpodSystem.Data.RawEvents.Trial{1,trial}.Events, trigIn) 
+        trig = BpodSystem.Data.RawEvents.Trial{1,trial}.Events.(trigIn) - TrialStart; 
+        scatter(ax, trig, ones(size(trig))*trial, sz,'g','filled');
+    end
+    end
     
-    legend(ax,  leg, 'Licks', 'SamplePeriod', 'Reward and consumption', 'Answer Period');
+    leg(5) = scatter(ax,  NaN, NaN, 'g', 'filled');
+
+    
+    legend(ax,  leg, 'Licks', 'SamplePeriod', 'Reward and consumption', 'Answer Period', 'Trial Trigger');
     ylim(ax, [ind1 ind1+40]);
     xlim(ax, [-1, 8] );
 end
