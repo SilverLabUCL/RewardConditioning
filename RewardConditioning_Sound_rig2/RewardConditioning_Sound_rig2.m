@@ -1,7 +1,7 @@
 %% HG 2021
 % Trigerred version for Rig 2
 
-function RewardConditioning_Sound_rig2()
+function RewardConditioning_Sound_rig2( )
     
     % SETUP
     % You will need:
@@ -12,10 +12,11 @@ function RewardConditioning_Sound_rig2()
     % Lickport
 
     global BpodSystem S;
-    global isrig2;
+%     global isrig2;
 
-    % On rig??
-    isrig2 = true;
+%     % On rig??
+%     isrig2=true;
+%     waitlick = true;
 %     if isrig2, TrigWait = 5; else, TrigWait = 0.1; end   % wait for trigger time, else just pre-stim
     
     %% Define parameters
@@ -23,10 +24,10 @@ function RewardConditioning_Sound_rig2()
     
     if isempty(fieldnames(S))  % If settings file was an empty struct, populate struct with default settings
         
+        
         S.GUI.WaterValveTime = 0.05;        % in sec
         S.GUI.PreSamplePeriod = 0.5;        % in sec
         S.GUI.SamplePeriod = 0.10;          % in sec
-        S.GUI.TriggerWait = 1;              % in sec
         
         S.GUI.Prob_Cue1  = 1;               % probability of cue 1
         S.GUI.Delay_Cue2 = 0.2;             % in sec
@@ -38,12 +39,17 @@ function RewardConditioning_Sound_rig2()
         S.GUI.ConsumptionPeriod = 1.5;      % in sec
         S.GUI.StopLickingPeriod = 0.5;      % in sec
         S.GUI.TimeOut = 4;                  % in sec
-        S.GUIPanels.Behaviour= {'WaterValveTime', 'PreSamplePeriod', 'SamplePeriod','TriggerWait',  ...                          % common params
+        S.GUIPanels.Behaviour= {'WaterValveTime', 'PreSamplePeriod', 'SamplePeriod',  ...                          % common params
                                 'Prob_Cue1', 'Delay_Cue1', 'Delay_Cue2', 'RewardProb_Cue1', 'RewardProb_Cue2',... % stim dep params
                                 'AnswerPeriod', 'ConsumptionPeriod', 'StopLickingPeriod', 'TimeOut'};             % task params
 
-        S.GUI.Freq_Cue1 = 2000;        
-        S.GUI.Freq_Cue2 = 8000;        
+        S.GUI.WaitForStopLick = 1;          %(1=true)
+        S.GUI.IsRig2 = 1;
+        S.GUI.TriggerWait = 1;              % in sec
+        S.GUIPanels.StateControl = {'WaitForStopLick', 'IsRig2', 'TriggerWait'};
+
+        S.GUI.Freq_Cue1 = 4000; %Hz        
+        S.GUI.Freq_Cue2 = 10000;        
         S.GUIPanels.Stimuli = {'Freq_Cue1', 'Freq_Cue2'};
         
         S.GUIMeta.ProtocolType.Style = 'popupmenu';     % protocol type selection
@@ -102,7 +108,8 @@ function RewardConditioning_Sound_rig2()
         
     for currentTrial = 1 : MaxTrials
         
-        
+        isrig2 = S.GUI.IsRig2;
+        waitlick = S.GUI.WaitForStopLick;
         
         % Define inputs/outputs
         if isrig2, io.WaterOutput = {'BNC1', 1}; else, io.WaterOutput  = {'ValveState',1}; end  % Valve 1 open 
@@ -172,7 +179,7 @@ function RewardConditioning_Sound_rig2()
         SampleState = 'SamplePeriod';
         SampleTup = 'Delay';
         AnswerTup = 'NoResponse';
-        if isrig2, lastState = 'Baseline2'; else, lastState = 'StopLicking'; end
+        if ~waitlick, lastState = 'Baseline2'; else, lastState = 'StopLicking'; end
         DelayTrig = []; % nothing happens during delay licking
         lickDelay = 0.025; % punish for 3 licks in 50 ms
         EarlyLickAction = 'Punish';
