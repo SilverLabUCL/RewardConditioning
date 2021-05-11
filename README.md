@@ -23,4 +23,4 @@ For sound-cued conditioning, only protocols 1,2,4,6,7,8 are applicable as there 
 
 This allows working in Triggered mode (`IsRig2=1/True`) or Normal mode (`IsRig2=0/false`). Waiting time for trial trigger can be updated on any trial using the GUI. Furthermore, post-reward, one can go to a post-baseline period (`WaitForStopLick=0/false`), or wait for the animal to stop licking for requisite period (`WaitForStopLick=1\true`). The latter is useful during training but for imaging, the former is recommended to have fully aligned imaging and behaviour trials.
 
-See Wiki for recommended training procedures.
+See [Wiki](https://github.com/SilverLabUCL/RewardConditioning/wiki/Training-on-Reward-Based-Conditioning) for recommended training procedures.
